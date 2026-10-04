@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ZipCheck – is your ZIP broken? Recover what's usable</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<style>
+:root{--bg:#fafaf8;--fg:#1a1a18;--mut:#6b6b66;--card:#fff;--bd:#e3e2dc;--ac:#2563eb;--ok:#15803d;--wn:#b45309;--er:#b91c1c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--fg:#ececE8;--mut:#9a9a93;--card:#1d1d1b;--bd:#33332f;--ac:#6ea0ff;--ok:#4ade80;--wn:#fbbf24;--er:#f87171}}
+:root[data-theme="dark"]{--bg:#141413;--fg:#ececE8;--mut:#9a9a93;--card:#1d1d1b;--bd:#33332f;--ac:#6ea0ff;--ok:#4ade80;--wn:#fbbf24;--er:#f87171}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:28px;margin:0 0 4px}p.sub{color:var(--mut);margin:0 0 22px}
+#drop{border:2px dashed var(--bd);border-radius:14px;background:var(--card);padding:44px 18px;text-align:center;cursor:pointer}
+#drop.on{border-color:var(--ac)}#drop b{display:block;font-size:18px;margin-bottom:4px}#drop span{color:var(--mut);font-size:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px 18px;margin-top:18px}
+.badge{display:inline-block;font-weight:700;letter-spacing:.04em;padding:4px 12px;border-radius:99px;color:#fff}
+.VALID{background:var(--ok)}.PARTIAL{background:var(--wn)}.CORRUPTED{background:var(--er)}
+.counts{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0;font-size:14px;color:var(--mut)}.counts b{color:var(--fg)}
+ul.notes{margin:8px 0 0;padding-left:20px}
+.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--mut);font-weight:600}
+td.n{word-break:break-all}.s-ok{color:var(--ok)}.s-partial{color:var(--wn)}.s-corrupt,.s-failed{color:var(--er)}.s-unsupported{color:var(--mut)}
+button{font:inherit;font-size:13px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);border-radius:8px;padding:4px 10px;cursor:pointer}
+button:hover{border-color:var(--ac)}.foot{color:var(--mut);font-size:13px;margin-top:22px}
+</style></head><body><main>
+<h1>ZipCheck</h1>
+<p class="sub">Know if your ZIP is broken and recover what's usable. Everything runs in your browser; your file is never uploaded.</p>
+<div id="drop" tabindex="0"><b>Drop a ZIP file here</b><span>or click to choose one</span></div>
+<input id="inp" type="file" hidden>
+<div id="out"></div>
+<p class="foot">Handles truncated downloads, missing or damaged directories and corrupt entries. Encrypted and ZIP64 entries are detected but not extracted. Files over ~1.5 GB may not load in a browser.</p>
+</main>
+<script>
+/* ===================== ENGINE (no DOM; lift into the npm package later) ===================== */
+const SIG={L:0x04034b50,C:0x02014b50,E:0x06054b50,D:0x08074b50};
+const u16=(d,o)=>d.getUint16(o,true),u32=(d,o)=>d.getUint32(o,true);
+const CT=new Uint32Array(256).map((_,n)=>{let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;return c>>>0});
+function crc32(b){let c=-1;for(let i=0;i<b.length;i++)c=CT[(c^b[i])&255]^(c>>>8);return(~c)>>>0}
+const dec=b=>new TextDecoder().decode(b);
+function concat(ch){let n=0;for(const c of ch)n+=c.length;const o=new Uint8Array(n);let p=0;for(const c of ch){o.set(c,p);p+=c.length}return o}
+
+// Raw inflate that keeps whatever decoded before truncation/corruption.
+function inflate(buf,s,e){
+  const inf=new pako.Inflate({raw:true}),ch=[];inf.onData=c=>ch.push(c);
+  const inp=buf.subarray(s,e);try{inf.push(inp,true)}catch(x){}
+  const st=inf.strm,o=st&&st.output;
+  if(o&&st.next_out){const p=o.subarray(0,st.next_out),l=ch[ch.length-1];
+    if(!(l&&l.buffer===p.buffer&&l.byteOffset===p.byteOffset&&l.length===p.length))ch.push(p.slice())}
+  return{data:concat(ch),bad:inf.err<0&&inf.err!==-5,used:inp.length-(st?st.avail_in:0)};
+}
+
+// Extract one entry starting from its local header. Never throws.
+function extract(buf,dv,e){
+  const R=(st,why,data=new Uint8Array(0),end=e.off+30)=>({st,why,data,end});
+  if(e.off+30>buf.length||u32(dv,e.off)!==SIG.L)return R('failed','Local header missing or damaged');
+  const ds=e.off+30+u16(dv,e.off+26)+u16(dv,e.off+28);
+  if(e.flags&1)return R('unsupported','Encrypted entry');
+  if(e.csize===0xFFFFFFFF||e.usize===0xFFFFFFFF)return R('unsupported','ZIP64 entry');
+  if(e.method!==0&&e.method!==8)return R('unsupported','Compression method '+e.method);
+  const known=e.csize!=null;
+  if(!known&&e.method===0)return R('failed','Stored entry with unknown size');
+  const lim=known?Math.min(buf.length,ds+e.csize):buf.length;
+  let tooShort=known&&ds+e.csize>buf.length,data,bad=false,end,crc=e.crc,us=e.usize;
+  if(e.method===0){data=buf.subarray(ds,lim);end=ds+e.csize}
+  else{const r=inflate(buf,ds,lim);data=r.data;bad=r.bad;end=known?ds+e.csize:ds+r.used}
+  if(!known){ // sizes live in a trailing data descriptor (flag bit 3)
+    let q=end;if(q+4<=buf.length&&u32(dv,q)===SIG.D)q+=4;
+    if(q+12<=buf.length){crc=u32(dv,q);us=u32(dv,q+8);end=q+12}else{crc=null;tooShort=true}
+  }
+  const n=data.length;
+  if(!bad&&crc!=null&&n===us&&crc32(data)===crc)return R('ok','',data,end);
+  if(tooShort)return R('partial','Archive cut off here; '+n+' bytes salvaged',data,end);
+  if(bad)return R(n?'partial':'failed',n?'Compressed stream damaged after '+n+' bytes':'Compressed stream damaged',data,end);
+  if(n===us)return R('corrupt','CRC mismatch: data was altered',data,end);
+  return R(n?'partial':'failed','Size mismatch: got '+n+' of '+us+' bytes',data,end);
+}
+
+// Normal path: read the central directory via the End Of Central Directory record.
+function readCD(buf,dv){
+  for(let i=buf.length-22;i>=Math.max(0,buf.length-65557);i--){
+    if(u32(dv,i)!==SIG.E)continue;
+    const n=u16(dv,i+10),off=u32(dv,i+16);
+    if(n===0xFFFF||off===0xFFFFFFFF||off>=i)continue;
+    const out=[];let p=off;
+    for(let k=0;k<n;k++){
+      if(p+46>buf.length||u32(dv,p)!==SIG.C)return null;
+      const nl=u16(dv,p+28);
+      out.push({name:dec(buf.subarray(p+46,p+46+nl)),flags:u16(dv,p+8),method:u16(dv,p+10),crc:u32(dv,p+16),csize:u32(dv,p+20),usize:u32(dv,p+24),off:u32(dv,p+42)});
+      p+=46+nl+u16(dv,p+30)+u16(dv,p+32);
+    }
+    return out;
+  }
+  return null;
+}
+
+// Recovery path: walk the file looking for plausible local headers.
+function scan(buf,dv){
+  const out=[];let p=0;
+  while(p<=buf.length-30){
+    p=buf.indexOf(0x50,p);if(p<0||p>buf.length-30)break;
+    if(u32(dv,p)!==SIG.L){p++;continue}
+    const fl=u16(dv,p+6),m=u16(dv,p+8),nl=u16(dv,p+26);
+    const name=p+30+nl<=buf.length?dec(buf.subarray(p+30,p+30+nl)):"\0";
+    if(u16(dv,p+4)>63||m>99||!nl||/[\x00-\x1f]/.test(name)){p++;continue} // reject false PK matches
+    const unk=(fl&8)&&!u32(dv,p+18);
+    const e={name,off:p,flags:fl,method:m,crc:u32(dv,p+14),csize:unk?null:u32(dv,p+18),usize:u32(dv,p+22)};
+    const r=extract(buf,dv,e);out.push({e,r});
+    p=Math.max(r.end,p+4);
+  }
+  return out;
+}
+
+function analyze(buf){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const cd=readCD(buf,dv);let mode='directory',rows;
+  if(cd)rows=cd.map(e=>({e,r:extract(buf,dv,e)}));else{mode='scan';rows=scan(buf,dv)}
+  const list=rows.map(({e,r})=>({e,name:e.name,st:r.st,why:r.why,bytes:r.data.length}));
+  const c={ok:0,partial:0,corrupt:0,failed:0,unsupported:0};list.forEach(x=>c[x.st]++);
+  const t=list.length,usable=c.ok+c.partial+c.corrupt;
+  const status=!t?'CORRUPTED':(c.ok===t&&mode==='directory')?'VALID':usable?'PARTIAL':'CORRUPTED';
+  const notes=[];
+  if(!t)notes.push('No ZIP structure found. The file is not a ZIP, or it is too damaged to read.');
+  else{
+    notes.push(mode==='directory'?'Central directory is intact ('+t+' entries).':'Central directory is missing or damaged. Rebuilt '+t+' entries by scanning the file.');
+    if(buf.length<4||u32(dv,0)!==SIG.L)notes.push('File does not start with the ZIP signature (PK\\x03\\x04); extra data may precede it.');
+    const cut=list.find(x=>x.st==='partial'&&/cut off/.test(x.why));
+    if(cut)notes.push('The archive looks cut off inside "'+cut.name+'" (incomplete download or copy). Anything after it is lost.');
+    if(c.corrupt)notes.push(c.corrupt+' file(s) have a CRC mismatch: contents were altered or damaged.');
+    if(c.unsupported)notes.push(c.unsupported+' file(s) are encrypted, ZIP64 or use an unsupported method.');
+  }
+  return{status,mode,counts:c,total:t,notes,list,dv};
+}
+/* ===================== END ENGINE ===================== */
+
+const $=s=>document.querySelector(s);
+const h=(t,a={},...k)=>{const e=document.createElement(t);Object.assign(e,a);k.flat().forEach(x=>e.append(x));return e};
+const fmt=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
+const safeName=n=>n.split(/[\\/]+/).filter(x=>x&&x!=='.'&&x!=='..').pop()||'file'; // blocks zip-slip
+let BUF=null,REP=null,FILE='';
+const LABEL={ok:'Intact',partial:'Partial',corrupt:'Corrupt',failed:'Failed',unsupported:'Unsupported'};
+
+function download(x){
+  const r=extract(BUF,REP.dv,x.e),sfx=r.st==='ok'?'':r.st==='partial'?'.partial':'.damaged';
+  const a=h('a',{href:URL.createObjectURL(new Blob([r.data])),download:safeName(x.name)+sfx});
+  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function render(){
+  const o=$('#out');o.replaceChildren();
+  const c=REP.counts;
+  const rows=REP.list.map(x=>h('tr',{},
+    h('td',{className:'n',textContent:x.name}),
+    h('td',{className:'s-'+x.st,textContent:LABEL[x.st]}),
+    h('td',{textContent:x.why||'—'}),
+    h('td',{textContent:fmt(x.bytes)}),
+    h('td',{},x.bytes&&x.st!=='unsupported'?h('button',{textContent:x.st==='ok'?'Download':'Download salvage',onclick:()=>download(x)}):''
+  )));
+  o.append(h('div',{className:'card'},
+    h('span',{className:'badge '+REP.status,textContent:REP.status}),
+    h('span',{style:'margin-left:10px;color:var(--mut)',textContent:FILE+' · '+fmt(BUF.length)}),
+    h('div',{className:'counts'},...['ok','partial','corrupt','failed','unsupported'].map(k=>h('span',{},h('b',{textContent:c[k]}),' '+LABEL[k].toLowerCase()))),
+    h('ul',{className:'notes'},...REP.notes.map(n=>h('li',{textContent:n}))),
+    h('p',{},h('button',{textContent:'Copy report (JSON)',onclick:e=>{
+      const j=JSON.stringify({file:FILE,size:BUF.length,status:REP.status,mode:REP.mode,counts:c,entries:REP.list.map(({name,st,why,bytes})=>({name,status:st,reason:why,bytes}))},null,2);
+      navigator.clipboard&&navigator.clipboard.writeText(j).then(()=>e.target.textContent='Copied');}}))));
+  if(REP.total)o.append(h('div',{className:'card tw'},h('table',{},
+    h('thead',{},h('tr',{},...['File','Status','Reason','Size',''].map(t=>h('th',{textContent:t})))),h('tbody',{},...rows))));
+}
+async function load(f){
+  if(!f)return;FILE=f.name;const o=$('#out');o.replaceChildren(h('div',{className:'card',textContent:'Analyzing '+f.name+'…'}));
+  try{BUF=new Uint8Array(await f.arrayBuffer())}catch(e){o.replaceChildren(h('div',{className:'card',textContent:'Could not read this file into memory (too large for the browser?).'}));return}
+  setTimeout(()=>{try{REP=analyze(BUF);render()}catch(e){o.replaceChildren(h('div',{className:'card',textContent:'Unexpected error while analyzing: '+e.message}))}},30);
+}
+const d=$('#drop'),i=$('#inp');
+d.onclick=()=>i.click();d.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')i.click()};
+i.onchange=()=>load(i.files[0]);
+['dragenter','dragover'].forEach(t=>d.addEventListener(t,e=>{e.preventDefault();d.classList.add('on')}));
+['dragleave','drop'].forEach(t=>d.addEventListener(t,e=>{e.preventDefault();d.classList.remove('on')}));
+d.addEventListener('drop',e=>load(e.dataTransfer.files[0]));
+</script></body></html>
