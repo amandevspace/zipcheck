@@ -1,35 +1,74 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ZipCheck – is your ZIP broken? Recover what's usable</title>
+<title>ZipCheck – Is your ZIP file broken? Check it and rescue your files</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 <style>
-:root{--bg:#fafaf8;--fg:#1a1a18;--mut:#6b6b66;--card:#fff;--bd:#e3e2dc;--ac:#2563eb;--ok:#15803d;--wn:#b45309;--er:#b91c1c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141413;--fg:#ececE8;--mut:#9a9a93;--card:#1d1d1b;--bd:#33332f;--ac:#6ea0ff;--ok:#4ade80;--wn:#fbbf24;--er:#f87171}}
-:root[data-theme="dark"]{--bg:#141413;--fg:#ececE8;--mut:#9a9a93;--card:#1d1d1b;--bd:#33332f;--ac:#6ea0ff;--ok:#4ade80;--wn:#fbbf24;--er:#f87171}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:860px;margin:0 auto;padding:28px 18px 60px}
-h1{font-size:28px;margin:0 0 4px}p.sub{color:var(--mut);margin:0 0 22px}
-#drop{border:2px dashed var(--bd);border-radius:14px;background:var(--card);padding:44px 18px;text-align:center;cursor:pointer}
-#drop.on{border-color:var(--ac)}#drop b{display:block;font-size:18px;margin-bottom:4px}#drop span{color:var(--mut);font-size:14px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px 18px;margin-top:18px}
-.badge{display:inline-block;font-weight:700;letter-spacing:.04em;padding:4px 12px;border-radius:99px;color:#fff}
-.VALID{background:var(--ok)}.PARTIAL{background:var(--wn)}.CORRUPTED{background:var(--er)}
-.counts{display:flex;gap:14px;flex-wrap:wrap;margin:12px 0;font-size:14px;color:var(--mut)}.counts b{color:var(--fg)}
-ul.notes{margin:8px 0 0;padding-left:20px}
-.tw{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--bd);vertical-align:top}th{color:var(--mut);font-weight:600}
-td.n{word-break:break-all}.s-ok{color:var(--ok)}.s-partial{color:var(--wn)}.s-corrupt,.s-failed{color:var(--er)}.s-unsupported{color:var(--mut)}
-button{font:inherit;font-size:13px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);border-radius:8px;padding:4px 10px;cursor:pointer}
-button:hover{border-color:var(--ac)}.foot{color:var(--mut);font-size:13px;margin-top:22px}
+:root{color-scheme:dark;--bg:#0b0c0f;--card:#14161b;--card2:#191c22;--bd:#262a33;--fg:#f2f3f5;--mut:#9aa0ab;--ac:#5b8cff;--good:#34d399;--warn:#fbbf24;--bad:#f87171;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);scroll-behavior:smooth}
+body{margin:0;background:radial-gradient(900px 420px at 50% -80px,#1a2347 0,transparent 70%),var(--bg);color:var(--fg);font:16px/1.55 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:56px 20px 72px;text-align:center}
+.pill{display:inline-block;font-size:13px;color:var(--ac);border:1px solid #2b3a66;background:#131a33;border-radius:99px;padding:4px 14px;margin-bottom:20px}
+h1{font-size:clamp(34px,7vw,56px);line-height:1.08;letter-spacing:-.02em;margin:0 0 18px;font-weight:800}
+h1 em{font-style:normal;color:var(--ac)}
+.lead{font-size:clamp(17px,2.6vw,20px);color:var(--mut);max-width:560px;margin:0 auto 22px}
+.trust{list-style:none;padding:0;margin:0 0 36px;display:flex;gap:10px 22px;justify-content:center;flex-wrap:wrap;font-size:14.5px;color:#cfd3da}
+.trust li::before{content:"✓";color:var(--good);font-weight:700;margin-right:7px}
+#drop{border:2px dashed #34406b;border-radius:22px;background:linear-gradient(180deg,#171c33,#12151d);padding:52px 20px 46px;cursor:pointer;transition:.15s;box-shadow:0 0 0 6px rgba(91,140,255,.06),0 24px 60px -24px rgba(91,140,255,.45)}
+#drop:hover,#drop.on{border-color:var(--ac);transform:translateY(-2px)}
+#drop svg{width:54px;height:54px;color:var(--ac);margin-bottom:10px}
+#drop h2{font-size:clamp(21px,4vw,28px);margin:0 0 6px;letter-spacing:-.01em}
+#drop p{margin:0 0 20px;color:var(--mut);font-size:15px}
+.cta{font:inherit;font-weight:700;font-size:16px;background:var(--ac);color:#fff;border:0;border-radius:12px;padding:13px 28px;cursor:pointer}
+.cta:hover{filter:brightness(1.1)}
+.safe{margin-top:12px;font-size:13px;color:var(--mut)}
+#out{text-align:left}
+.res{margin-top:26px;background:var(--card);border:1px solid var(--bd);border-radius:18px;overflow:hidden}
+.top{display:flex;gap:16px;align-items:flex-start;padding:24px 22px}
+.ic{flex:none;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-size:24px;font-weight:800;color:#0b0c0f}
+.good .ic{background:var(--good)}.warn .ic{background:var(--warn)}.bad .ic{background:var(--bad)}
+.top h3{margin:0 0 4px;font-size:24px;letter-spacing:-.01em}.good h3{color:var(--good)}.warn h3{color:var(--warn)}.bad h3{color:var(--bad)}
+.top p{margin:0;color:#cfd3da}.top small{display:block;margin-top:6px;color:var(--mut)}
+.files{border-top:1px solid var(--bd);max-height:340px;overflow:auto}
+.row{display:flex;gap:12px;align-items:center;padding:12px 22px;border-bottom:1px solid var(--bd)}
+.row:last-child{border-bottom:0}.nm{flex:1;min-width:0;word-break:break-word}.nm small{display:block;color:var(--mut)}
+.tag{font-size:12.5px;border-radius:99px;padding:2px 10px;white-space:nowrap;border:1px solid}
+.t-ok{color:var(--good);border-color:#1d5c46}.t-partial{color:var(--warn);border-color:#6b5217}.t-corrupt,.t-failed{color:var(--bad);border-color:#6b2b2b}.t-unsupported{color:var(--mut);border-color:var(--bd)}
+button.sm{font:inherit;font-size:13.5px;color:var(--fg);background:var(--card2);border:1px solid var(--bd);border-radius:9px;padding:6px 12px;cursor:pointer}
+button.sm:hover{border-color:var(--ac)}
+.bar{display:flex;gap:10px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--bd);background:var(--card2)}
+details{border-top:1px solid var(--bd);padding:12px 22px;color:var(--mut);font-size:14px}summary{cursor:pointer}details ul{margin:8px 0 0;padding-left:20px}
+.how{margin-top:72px}.how h2{font-size:24px;margin:0 0 24px;letter-spacing:-.01em}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;counter-reset:s}
+.steps li{counter-increment:s;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:20px 18px;text-align:left}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#1b2547;color:var(--ac);font-weight:700;margin-bottom:12px}
+.steps b{display:block;font-size:17px;margin-bottom:2px}.steps span{color:var(--mut);font-size:14.5px}
+.foot{margin-top:40px;font-size:13px;color:var(--mut)}
 </style></head><body><main>
-<h1>ZipCheck</h1>
-<p class="sub">Know if your ZIP is broken and recover what's usable. Everything runs in your browser; your file is never uploaded.</p>
-<div id="drop" tabindex="0"><b>Drop a ZIP file here</b><span>or click to choose one</span></div>
+<header>
+  <span class="pill">Free ZIP file checker &amp; repair</span>
+  <h1>Is your ZIP file broken?<br><em>Find out in seconds.</em></h1>
+  <p class="lead">Can't open a ZIP, or it says "corrupted"? ZipCheck shows what's wrong and rescues every file that still works.</p>
+  <ul class="trust"><li>No upload, your file stays private</li><li>Fast results in seconds</li><li>Works locally in your browser</li></ul>
+</header>
+<section id="drop" tabindex="0" aria-label="Choose a ZIP file">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+  <h2>Drop your ZIP file to check if it's broken</h2>
+  <p>Drag it here, or pick it from your device</p>
+  <button class="cta" type="button">Choose ZIP file</button>
+  <div class="safe">🔒 Nothing leaves your device</div>
+</section>
 <input id="inp" type="file" hidden>
-<div id="out"></div>
-<p class="foot">Handles truncated downloads, missing or damaged directories and corrupt entries. Encrypted and ZIP64 entries are detected but not extracted. Files over ~1.5 GB may not load in a browser.</p>
+<div id="out" aria-live="polite"></div>
+<section class="how">
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li><b>Drop your ZIP</b><span>Drag it in or choose it from your device.</span></li>
+    <li><b>We check it</b><span>Every file inside is tested for damage.</span></li>
+    <li><b>Save what works</b><span>Download the files that can be recovered.</span></li>
+  </ol>
+</section>
+<p class="foot">Password-protected files and archives over ~1.5 GB can't be checked here.</p>
 </main>
 <script>
 /* ===================== ENGINE (no DOM; lift into the npm package later) ===================== */
@@ -138,41 +177,49 @@ const h=(t,a={},...k)=>{const e=document.createElement(t);Object.assign(e,a);k.f
 const fmt=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
 const safeName=n=>n.split(/[\\/]+/).filter(x=>x&&x!=='.'&&x!=='..').pop()||'file'; // blocks zip-slip
 let BUF=null,REP=null,FILE='';
-const LABEL={ok:'Intact',partial:'Partial',corrupt:'Corrupt',failed:'Failed',unsupported:'Unsupported'};
+const HUMAN={ok:'Good',partial:'Partly recovered',corrupt:'Damaged',failed:'Lost',unsupported:"Can't open"};
 
 function download(x){
   const r=extract(BUF,REP.dv,x.e),sfx=r.st==='ok'?'':r.st==='partial'?'.partial':'.damaged';
   const a=h('a',{href:URL.createObjectURL(new Blob([r.data])),download:safeName(x.name)+sfx});
   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
+function verdict(){
+  const c=REP.counts,t=REP.total,w=t===1?'file':'files',part=c.partial+c.corrupt,lost=c.failed+c.unsupported;
+  if(REP.status==='VALID')return{k:'good',i:'✓',t:'Your file is safe',d:'All '+t+' '+w+' inside are intact. Nothing to fix.'};
+  if(REP.status==='PARTIAL'){
+    if(c.ok===t)return{k:'warn',i:'!',t:'Some files can be recovered',d:'All '+t+' '+w+' are intact, but the ZIP\'s index is damaged, so some programs refuse to open it. Download your files below.'};
+    return{k:'warn',i:'!',t:'Some files can be recovered',d:c.ok+' of '+t+' '+w+' are fully intact'+(part?', '+part+' partly recovered':'')+(lost?', '+lost+' lost or unreadable':'')+'.'};
+  }
+  return{k:'bad',i:'✕',t:'File is severely damaged',d:'We couldn\'t find any file we can recover. It may not be a ZIP, or too little of it is left.'};
+}
+function reset(){$('#out').replaceChildren();$('#inp').value='';window.scrollTo({top:0})}
 function render(){
-  const o=$('#out');o.replaceChildren();
-  const c=REP.counts;
-  const rows=REP.list.map(x=>h('tr',{},
-    h('td',{className:'n',textContent:x.name}),
-    h('td',{className:'s-'+x.st,textContent:LABEL[x.st]}),
-    h('td',{textContent:x.why||'—'}),
-    h('td',{textContent:fmt(x.bytes)}),
-    h('td',{},x.bytes&&x.st!=='unsupported'?h('button',{textContent:x.st==='ok'?'Download':'Download salvage',onclick:()=>download(x)}):''
-  )));
-  o.append(h('div',{className:'card'},
-    h('span',{className:'badge '+REP.status,textContent:REP.status}),
-    h('span',{style:'margin-left:10px;color:var(--mut)',textContent:FILE+' · '+fmt(BUF.length)}),
-    h('div',{className:'counts'},...['ok','partial','corrupt','failed','unsupported'].map(k=>h('span',{},h('b',{textContent:c[k]}),' '+LABEL[k].toLowerCase()))),
-    h('ul',{className:'notes'},...REP.notes.map(n=>h('li',{textContent:n}))),
-    h('p',{},h('button',{textContent:'Copy report (JSON)',onclick:e=>{
-      const j=JSON.stringify({file:FILE,size:BUF.length,status:REP.status,mode:REP.mode,counts:c,entries:REP.list.map(({name,st,why,bytes})=>({name,status:st,reason:why,bytes}))},null,2);
-      navigator.clipboard&&navigator.clipboard.writeText(j).then(()=>e.target.textContent='Copied');}}))));
-  if(REP.total)o.append(h('div',{className:'card tw'},h('table',{},
-    h('thead',{},h('tr',{},...['File','Status','Reason','Size',''].map(t=>h('th',{textContent:t})))),h('tbody',{},...rows))));
+  const v=verdict(),o=$('#out');o.replaceChildren();
+  const usable=REP.list.filter(x=>x.bytes&&x.st!=='unsupported');
+  const rows=REP.list.map(x=>h('div',{className:'row'},
+    h('div',{className:'nm'},x.name,x.why?h('small',{textContent:x.why}):''),
+    h('span',{className:'tag t-'+x.st,textContent:HUMAN[x.st]}),
+    x.bytes&&x.st!=='unsupported'?h('button',{className:'sm',textContent:'Download',onclick:()=>download(x)}):h('span',{style:'width:80px'})));
+  const json=()=>JSON.stringify({file:FILE,size:BUF.length,status:REP.status,mode:REP.mode,counts:REP.counts,entries:REP.list.map(({name,st,why,bytes})=>({name,status:st,reason:why,bytes}))},null,2);
+  const card=h('section',{className:'res '+v.k},
+    h('div',{className:'top'},h('div',{className:'ic',textContent:v.i}),
+      h('div',{},h('h3',{textContent:v.t}),h('p',{textContent:v.d}),h('small',{textContent:FILE+' · '+fmt(BUF.length)}))),
+    REP.total?h('div',{className:'files'},rows):'',
+    h('details',{},h('summary',{textContent:'Technical details'}),h('ul',{},...REP.notes.map(n=>h('li',{textContent:n})))),
+    h('div',{className:'bar'},
+      h('button',{className:'sm',textContent:'Check another file',onclick:reset}),
+      h('button',{className:'sm',textContent:'Copy report',onclick:e=>{navigator.clipboard&&navigator.clipboard.writeText(json()).then(()=>e.target.textContent='Copied')}})));
+  o.append(card);card.scrollIntoView({behavior:'smooth',block:'start'});
 }
 async function load(f){
-  if(!f)return;FILE=f.name;const o=$('#out');o.replaceChildren(h('div',{className:'card',textContent:'Analyzing '+f.name+'…'}));
-  try{BUF=new Uint8Array(await f.arrayBuffer())}catch(e){o.replaceChildren(h('div',{className:'card',textContent:'Could not read this file into memory (too large for the browser?).'}));return}
-  setTimeout(()=>{try{REP=analyze(BUF);render()}catch(e){o.replaceChildren(h('div',{className:'card',textContent:'Unexpected error while analyzing: '+e.message}))}},30);
+  if(!f)return;FILE=f.name;const o=$('#out');
+  o.replaceChildren(h('section',{className:'res'},h('div',{className:'top'},h('div',{},h('h3',{textContent:'Checking your file…'}),h('p',{textContent:f.name})))));
+  try{BUF=new Uint8Array(await f.arrayBuffer())}catch(e){o.replaceChildren(h('section',{className:'res bad'},h('div',{className:'top'},h('div',{className:'ic',textContent:'✕'}),h('div',{},h('h3',{textContent:"Couldn't open this file"}),h('p',{textContent:'It may be too large for the browser. Try a file under 1.5 GB.'})))));return}
+  setTimeout(()=>{try{REP=analyze(BUF);render()}catch(e){o.replaceChildren(h('section',{className:'res bad'},h('div',{className:'top'},h('div',{className:'ic',textContent:'✕'}),h('div',{},h('h3',{textContent:'Something went wrong'}),h('p',{textContent:e.message})))))}},30);
 }
 const d=$('#drop'),i=$('#inp');
-d.onclick=()=>i.click();d.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')i.click()};
+d.onclick=()=>i.click();d.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();i.click()}};
 i.onchange=()=>load(i.files[0]);
 ['dragenter','dragover'].forEach(t=>d.addEventListener(t,e=>{e.preventDefault();d.classList.add('on')}));
 ['dragleave','drop'].forEach(t=>d.addEventListener(t,e=>{e.preventDefault();d.classList.remove('on')}));
